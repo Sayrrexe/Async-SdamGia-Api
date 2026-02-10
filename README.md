@@ -9,6 +9,7 @@
 - получать задачи теста по `testid` (`get_test_by_id`)
 - получать задачи категории (`get_category_by_id`)
 - загружать каталог тем и категорий (`get_catalog`)
+- получать случайное задание по теме и периоду (`get_random_problem`)
 - генерировать тест (`generate_test`)
 - получать ссылку на PDF теста (`generate_pdf`)
 - искать задачи по изображению через OCR (`search_by_img`)
@@ -57,10 +58,16 @@ ids = await api.search("math", "Найдите количество")
 # Каталог предмета
 topics = await api.get_catalog("math")
 
+# случайное задание из темы 1 за последний месяц (best-effort по периоду)
+random_problem = await api.get_random_problem("math", topic_id="1", period_days=30, seed=42)
+
 # Генерация теста и PDF
 new_test_id = await api.generate_test("math", {"full": 1})
 pdf_url = await api.generate_pdf("math", new_test_id, pdf="h")
 ```
+
+`get_random_problem` использует эвристику по "свежести" страниц и ID задач.
+Это приблизительный фильтр периода, а не строгая фильтрация по дате публикации.
 
 Рендер задачи в изображение (`get_problem_by_id`) поддерживает `img`:
 - `pyppeteer`
@@ -92,7 +99,11 @@ ids = await api.search_by_img("rus", "Image.jpg")
 
 ## Тесты
 
-В проекте используется live-контур (реальные запросы к `*.sdamgia.ru`):
+В проекте есть unit и live контуры:
+
+```bash
+pytest -m "not live" -q
+```
 
 ```bash
 pytest -m live -q
@@ -105,7 +116,7 @@ pytest -m live -q
 
 ## CI
 
-GitHub Actions запускает live-тесты на `push` и `pull_request` для Python `3.12` и `3.13`.
+GitHub Actions запускает unit и live-тесты на `push` и `pull_request` для Python `3.12` и `3.13`.
 При падении сохраняются логи (`junit` + `live.log`) как artifacts.
 
 ## Для AI-агентов

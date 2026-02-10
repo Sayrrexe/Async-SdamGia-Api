@@ -26,6 +26,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .[dev]
 
+      - name: Run unit test suite
+        shell: bash
+        run: |
+          pytest -m "not live" -q
+
       - name: Run live test suite
         shell: bash
         run: |

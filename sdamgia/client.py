@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 from collections.abc import Awaitable, Callable
 from typing import Any
 from urllib.parse import parse_qs, urljoin, urlparse
@@ -212,6 +213,57 @@ class SdamGIA:
         soup = await self._fetch_soup(f"{subject_base_url}/prob_catalog")
         return self._catalog_parser.parse(soup)
 
+    async def get_random_problem(
+        self,
+        subject: str,
+        topic_id: str,
+        period_days: int = 30,
+        seed: int | None = None,
+    ) -> dict[str, object] | None:
+        """Get random problem for subject topic with a best-effort period filter.
+
+        Args:
+            subject: Subject short code.
+            topic_id: Topic identifier (for example, "1" for task 1).
+            period_days: Relative period window in days.
+            seed: Optional random seed for deterministic selection.
+
+        Returns:
+            Parsed problem payload or None if no valid candidate is found.
+        """
+        if period_days < 1:
+            raise ValueError("period_days must be >= 1")
+
+        catalog = await self.get_catalog(subject)
+        topic_exists = any(str(topic.get("topic_id")) == topic_id for topic in catalog)
+        if not topic_exists:
+            return None
+
+        pages_per_category = self._resolve_pages_per_category(period_days)
+        candidate_ids = await self._collect_topic_candidate_ids(subject, topic_id, pages_per_category)
+
+        if not candidate_ids:
+            fallback_pages = self._resolve_pages_per_category(365)
+            candidate_ids = await self._collect_topic_candidate_ids(subject, topic_id, fallback_pages)
+
+        if not candidate_ids:
+            return None
+
+        first_candidate = self._pick_problem_with_seed(candidate_ids, seed)
+        if first_candidate is None:
+            return None
+
+        randomizer = random.Random(seed)
+        remaining_ids = [problem_id for problem_id in candidate_ids if problem_id != first_candidate]
+        randomizer.shuffle(remaining_ids)
+
+        for problem_id in [first_candidate, *remaining_ids]:
+            problem = await self.get_problem_by_id(subject, problem_id)
+            if problem is not None:
+                return problem
+
+        return None
+
     async def generate_test(self, subject: str, problems: dict[Any, int] | None = None) -> str:
         """Generate test and return test ID.
 
@@ -345,6 +397,98 @@ class SdamGIA:
         await asyncio.gather(*(parse_chunk(index) for index in range(len(words_from_img))))
 
         return result
+
+    def _resolve_pages_per_category(self, period_days: int) -> int:
+        """Resolve how many category pages to scan for the requested period.
+
+        Args:
+            period_days: Relative period window in days.
+
+        Returns:
+            Number of pages to scan in each category.
+        """
+        if period_days <= 10:
+            return 1
+        if period_days <= 30:
+            return 3
+        if period_days <= 90:
+            return 6
+        return 10
+
+    async def _collect_topic_candidate_ids(
+        self,
+        subject: str,
+        topic_id: str,
+        pages_per_category: int,
+    ) -> list[str]:
+        """Collect unique problem IDs from topic categories and page range.
+
+        Args:
+            subject: Subject short code.
+            topic_id: Topic identifier.
+            pages_per_category: Number of pages to scan for each category.
+
+        Returns:
+            Unique candidate problem identifiers.
+        """
+        catalog = await self.get_catalog(subject)
+        target_topic = next((topic for topic in catalog if str(topic.get("topic_id")) == topic_id), None)
+        if target_topic is None:
+            return []
+
+        categories = target_topic.get("categories", [])
+        if not isinstance(categories, list):
+            return []
+
+        category_ids: list[str] = []
+        for category in categories:
+            if not isinstance(category, dict):
+                continue
+            category_id = category.get("category_id")
+            if isinstance(category_id, str) and category_id:
+                category_ids.append(category_id)
+
+        if not category_ids:
+            return []
+
+        semaphore = asyncio.Semaphore(10)
+        lock = asyncio.Lock()
+        seen_ids: set[str] = set()
+        candidate_ids: list[str] = []
+
+        async def collect_for_page(category_id: str, page: int) -> None:
+            async with semaphore:
+                page_ids = await self.get_category_by_id(subject, category_id, page=page)
+
+            async with lock:
+                for problem_id in page_ids:
+                    if problem_id in seen_ids:
+                        continue
+                    seen_ids.add(problem_id)
+                    candidate_ids.append(problem_id)
+
+        await asyncio.gather(
+            *(
+                collect_for_page(category_id, page)
+                for category_id in category_ids
+                for page in range(1, pages_per_category + 1)
+            )
+        )
+        return candidate_ids
+
+    def _pick_problem_with_seed(self, candidate_ids: list[str], seed: int | None) -> str | None:
+        """Pick one problem identifier from candidates.
+
+        Args:
+            candidate_ids: Candidate identifiers to pick from.
+            seed: Optional random seed for deterministic selection.
+
+        Returns:
+            Selected problem identifier or None if candidates are empty.
+        """
+        if not candidate_ids:
+            return None
+        return random.Random(seed).choice(candidate_ids)
 
     async def _fetch_soup(self, url: str) -> BeautifulSoup:
         """Fetch URL and parse response as HTML.

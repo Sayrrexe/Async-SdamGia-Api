@@ -66,6 +66,17 @@ Catalog item shape:
 - `topic_name: str`
 - `categories: list[dict[str, str]]` with `category_id`, `category_name`
 
+### `await get_random_problem(subject, topic_id, period_days=30, seed=None)`
+
+Returns `dict[str, object] | None`.
+
+- Returns the same payload shape as `get_problem_by_id`.
+- `topic_id` is required.
+- `period_days` must be `>= 1`, otherwise `ValueError` is raised.
+- Unknown subject keeps existing `KeyError` behavior.
+- Period matching is best-effort (freshness heuristic by category pages/problem IDs), not strict by publication date.
+- If no candidates are found in requested period window, method retries once with fallback window equivalent to 365 days.
+
 ### `await generate_test(subject, problems=None)`
 
 Returns generated `testid` as numeric `str`.
