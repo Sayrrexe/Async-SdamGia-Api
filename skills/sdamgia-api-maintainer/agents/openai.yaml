@@ -1,0 +1,4 @@
+interface:
+  display_name: "SdamGIA Maintainer"
+  short_description: "Maintain and evolve the sdamgia-api library"
+  default_prompt: "Use $sdamgia-api-maintainer to maintain and extend this SdamGIA API library."

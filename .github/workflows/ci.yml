@@ -1,0 +1,42 @@
+name: Live Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  live-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Run live test suite
+        shell: bash
+        run: |
+          mkdir -p test-results
+          set -o pipefail
+          pytest -m live -q --junitxml=test-results/live-junit.xml 2>&1 | tee test-results/live.log
+
+      - name: Upload live test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-test-logs-py${{ matrix.python-version }}
+          path: test-results/
+          if-no-files-found: ignore
