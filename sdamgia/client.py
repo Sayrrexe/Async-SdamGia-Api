@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import parse_qs, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 import httpx
@@ -233,12 +234,17 @@ class SdamGIA:
 
         response = await self._request_with_retry(
             lambda: self._http_client.get(
-                f"{subject_base_url}/test?a=generate",
-                params=levels,
+                f"{subject_base_url}/test",
+                params={"a": "generate", **levels},
                 follow_redirects=False,
-            )
+            ),
+            allow_redirect_response=True,
         )
-        return response.headers["location"].split("id=")[1].split("&nt")[0]
+        location = self._extract_redirect_location(response)
+        test_id = parse_qs(urlparse(location).query).get("id", [""])[0]
+        if not test_id.isdigit():
+            raise ValueError(f"Failed to parse generated test id from redirect: {location}")
+        return test_id
 
     async def generate_pdf(
         self,
@@ -293,9 +299,11 @@ class SdamGIA:
                     "dcol": normalize_flag(col),
                 },
                 follow_redirects=False,
-            )
+            ),
+            allow_redirect_response=True,
         )
-        return subject_base_url + response.headers["location"]
+        location = self._extract_redirect_location(response)
+        return urljoin(f"{subject_base_url}/", location)
 
     async def search_by_img(self, subject: str, path: str) -> list[str]:
         """Search problems by text recognized from image.
@@ -353,11 +361,13 @@ class SdamGIA:
     async def _request_with_retry(
         self,
         request: Callable[[], Awaitable[httpx.Response]],
+        allow_redirect_response: bool = False,
     ) -> httpx.Response:
         """Execute HTTP request with retry and explicit status checks.
 
         Args:
             request: Zero-argument async function returning HTTP response.
+            allow_redirect_response: Return redirect responses without raising.
 
         Returns:
             Successful HTTP response object.
@@ -366,6 +376,8 @@ class SdamGIA:
         for attempt in range(self._retries + 1):
             try:
                 response = await request()
+                if allow_redirect_response and response.is_redirect:
+                    return response
                 response.raise_for_status()
                 return response
             except httpx.HTTPError as error:
@@ -377,3 +389,10 @@ class SdamGIA:
         if last_error is not None:
             raise last_error
         raise RuntimeError("Unexpected request wrapper state")
+
+    @staticmethod
+    def _extract_redirect_location(response: httpx.Response) -> str:
+        location = response.headers.get("location")
+        if location is None:
+            raise ValueError("Redirect response does not include a location header.")
+        return location
