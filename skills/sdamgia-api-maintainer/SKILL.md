@@ -1,64 +1,45 @@
 ---
 name: sdamgia-api-maintainer
-description: Maintain and evolve the sdamgia-api Python library. Use when working on scraping/parsing logic for sdamgia.ru, updating package structure, adding tests/CI, refactoring the SdamGIA class, or introducing breaking API changes in this repository.
+description: Maintain and evolve the Async-SdamGia-Api Python library for sdamgia.ru. Use when Codex needs to change SdamGIA client behavior, HTML parsing/rendering/OCR logic, public API contracts, package/test configuration, or repository docs for this library.
 ---
 
 # SdamGIA API Maintainer
 
-## Overview
+Maintain this repository with a domain-first, OOP style and explicit behavior changes.
 
-Use this skill to develop and modernize `sdamgia-api` as a maintainable Python package.
-Focus on deliberate refactoring, clear OOP design, deterministic tests, and repository-specific coding rules.
+## Workflow
 
-## Core Workflow
+1. Read baseline context.
+- Read `AGENTS.md`, `README.md`, `pyproject.toml`.
+- Read touched modules under `sdamgia/` and related tests under `tests/`.
+- Check git status before editing to avoid clobbering user work.
 
-### 1. Build Context Before Editing
-Read these files first:
-- `sdamgia/__init__.py`
-- `sdamgia/images.py`
-- `pyproject.toml`
-- `README.md`
-- `AGENTS.md`
+2. Load only required references.
+- Load `references/coding-rules.md` for coding, docstring, and testing constraints.
+- Load `references/api-surface.md` for public contracts and payload shapes.
+- Load only the reference relevant to the active task.
 
-Then inspect current git state to avoid clobbering in-progress user changes.
+3. Keep module ownership clear.
+- Change transport/retry/request behavior in `sdamgia/client.py`.
+- Change HTML extraction and payload shaping in `sdamgia/parsers.py`.
+- Change image-render backends in `sdamgia/rendering.py`.
+- Change OCR integration in `sdamgia/images.py`.
+- Re-export public API from `sdamgia/__init__.py` only.
 
-### 2. Apply Repository Design Rules
-Use OOP style for new logic:
-- Prefer cohesive classes and explicit responsibilities.
-- Avoid utility dumps and speculative abstractions.
-- Group behavior by domain (`problem parsing`, `catalog parsing`, `test generation`).
+4. Implement with repository rules.
+- Use explicit domain names from the codebase.
+- Keep logic straightforward; avoid speculative helper layers.
+- Keep public APIs fully type hinted.
+- Use Google-style docstrings with `Summary`, `Args:`, `Returns:` only.
+- Handle failures explicitly; avoid silent broad exception swallowing.
 
-Breaking changes are allowed in this repository. Do not preserve old contracts unless explicitly requested.
+5. Validate in layers.
+- Run `python3 -m compileall -q sdamgia` first.
+- Run targeted tests for touched behavior.
+- Run `pytest -q` for deterministic coverage.
+- Run `pytest -m live -q` only when integration behavior changed.
 
-### 3. Follow Docstring Contract
-For public classes, methods, and functions, write Google-style docstrings with strict sections:
-- Summary line.
-- `Args:`
-- `Returns:`
-
-Do not include `Examples`, `Notes`, `Raises`, or auxiliary narrative blocks.
-
-### 4. Keep Code Human-Like
-When editing or creating code:
-- Use domain names that match the repository vocabulary.
-- Avoid repetitive generic scaffolding and template-heavy phrasing.
-- Keep comments sparse and purposeful; do not narrate obvious assignments.
-- Match local coding style instead of forcing uniform boilerplate.
-
-### 5. Validate in Layers
-Run fast checks first:
-- `python3 -m compileall -q sdamgia`
-- unit tests for touched modules
-
-Run broader checks after local fixes:
-- package install/build checks
-- full test suite
-
-Document behavior changes in README and changelog-style notes when changing public behavior.
-
-## References
-
-- API map: `references/api-surface.md`
-- Coding rules: `references/coding-rules.md`
-
-Load only the reference that is relevant to the current task.
+6. Sync external contracts.
+- Update `README.md` when user-facing behavior changes.
+- Update `references/api-surface.md` when signatures/payloads change.
+- Call out breaking changes explicitly in the final handoff.
